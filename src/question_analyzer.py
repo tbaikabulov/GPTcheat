@@ -25,11 +25,16 @@ class QuestionAnalyzer:
             with open('context/prompt.txt', 'r', encoding='utf-8') as f:
                 prompt_template = f.read()
                 
+            # Загружаем описание вакансии
+            with open('context/vacancy.txt', 'r', encoding='utf-8') as f:
+                vacancy_info = f.read()
+                
             return {
                 "context": {
                     "background": context,
                     "current_role": "",
-                    "key_achievements": []
+                    "key_achievements": [],
+                    "vacancy_info": vacancy_info
                 },
                 "settings": {
                     "context_duration": 120,
@@ -45,7 +50,8 @@ class QuestionAnalyzer:
                 "context": {
                     "background": "",
                     "current_role": "",
-                    "key_achievements": []
+                    "key_achievements": [],
+                    "vacancy_info": ""
                 },
                 "settings": {
                     "context_duration": 120,
@@ -109,7 +115,8 @@ class QuestionAnalyzer:
                 current_role=self.config['context']['current_role'],
                 achievements=", ".join(self.config['context']['key_achievements']),
                 duration=self.config['settings']['context_duration'],
-                context=context
+                context=context,
+                vacancy_info=self.config['context']['vacancy_info']
             )
             
             # Отправляем запрос к GPT

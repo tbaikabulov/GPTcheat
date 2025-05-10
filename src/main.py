@@ -2,7 +2,7 @@ import sys
 import os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QPushButton, QTextEdit, QLabel, QFileDialog, QProgressBar, QHBoxLayout, QSlider)
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QShortcut, QKeySequence, QPainter, QColor, QPainterPath, QPen
 from audio_capture import AudioCapture
 from speech_recognition import SpeechRecognition
@@ -110,37 +110,6 @@ class ProcessingIndicator(QWidget):
             painter.setPen(QColor(0, 150, 255, alpha))
             painter.drawLine(0, 0, 20, 0)
 
-class AudioThread(QThread):
-    finished = Signal(bytes)
-    error = Signal(str)
-    
-    def __init__(self):
-        super().__init__()
-        self.audio_capture = None
-        self.is_running = True
-        
-    def run(self):
-        try:
-            self.audio_capture = AudioCapture()
-            while self.is_running:
-                try:
-                    # Записываем 5 секунд аудио
-                    for audio_data, _ in self.audio_capture.record(5):
-                        if audio_data and len(audio_data) > 0:  # Проверяем, что есть данные
-                            self.finished.emit(audio_data)
-                except Exception as e:
-                    self.error.emit(f"Ошибка записи: {str(e)}")
-                    break
-        finally:
-            if self.audio_capture:
-                self.audio_capture.stop()
-            
-    def stop(self):
-        self.is_running = False
-        if self.audio_capture:
-            self.audio_capture.stop()
-        self.wait(1000)  # Ждем завершения потока
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -201,11 +170,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
         
-        # Кнопка загрузки конфигурации
-        self.config_btn = QPushButton("Загрузить конфигурацию")
-        self.config_btn.clicked.connect(self.load_config)
-        layout.addWidget(self.config_btn)
-        
         # Статус записи
         self.status_label = QLabel("Статус: Ожидание")
         self.status_label.setStyleSheet("QLabel { color: gray; }")
@@ -243,22 +207,6 @@ class MainWindow(QMainWindow):
         # Горячая клавиша для записи (Space)
         self.record_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
         self.record_shortcut.activated.connect(self.toggle_recording)
-        
-    def load_config(self):
-        file_name, _ = QFileDialog.getOpenFileName(
-            self, "Выберите файл конфигурации", "", "Text Files (*.txt);;All Files (*)"
-        )
-        if file_name:
-            try:
-                with open(file_name, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    # Обновляем конфигурацию
-                    self.question_analyzer.load_config()
-                    self.status_label.setText("Статус: Конфигурация загружена")
-                    self.status_label.setStyleSheet("QLabel { color: green; }")
-            except Exception as e:
-                self.status_label.setText(f"Ошибка загрузки конфигурации: {str(e)}")
-                self.status_label.setStyleSheet("QLabel { color: red; }")
         
     def toggle_recording(self):
         if not self.is_recording:
