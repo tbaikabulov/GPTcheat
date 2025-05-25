@@ -34,9 +34,9 @@ class WaveVisualizer(QWidget):
         step = width / len(self.levels)
         for i, level in enumerate(self.levels):
             x = i * step
-            y = center_y - level * height * 6.75
+            y = center_y - level * height * 15
             painter.drawLine(int(x), int(center_y), int(x), int(y))
-            y = center_y + level * height * 6.75
+            y = center_y + level * height * 15
             painter.drawLine(int(x), int(center_y), int(x), int(y))
             
         # Центральная линия

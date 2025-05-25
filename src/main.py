@@ -124,6 +124,12 @@ class MainWindow(QMainWindow):
     
     def stop_recording(self):
         if self.audio_recorder.is_recording:
+            # Сохраняем последний чанк перед остановкой
+            chunk_data = self.audio_recorder.save_chunk()
+            if chunk_data:
+                filepath = self.file_manager.save_audio_chunk(chunk_data)
+                print(f"Сохранен последний чанк: {filepath}")
+            
             self.audio_recorder.stop_recording()
             
             self.record_btn.setText("🎤 Начать запись (Space)")
@@ -152,3 +158,6 @@ if __name__ == '__main__':
     window = MainWindow()
     window.show()
     sys.exit(app.exec()) 
+
+
+# command to run: python src/main.py

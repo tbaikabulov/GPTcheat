@@ -2,14 +2,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 
-def transcribe_audio(wav_file_path):
-    # Загружаем API ключ из .env файла
-    load_dotenv()
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY не найден в .env файле")
-    
-    # Создаем клиент OpenAI
+def audio_to_text(wav_file_path, api_key):
     client = OpenAI(api_key=api_key)
     
     try:
@@ -29,14 +22,7 @@ def transcribe_audio(wav_file_path):
 wav_file = "temp/combined.wav"
     
 # Получаем расшифровку
-result = transcribe_audio(wav_file)
+result = audio_to_text(wav_file)
     
-# Выводим результат
-if result:
-    print("Расшифровка аудио:")
-    print(result)
-else:
-    print("Не удалось распознать аудио")
-
 # command to run: python src/audio_to_text.py
 
