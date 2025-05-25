@@ -1,20 +1,42 @@
 import os
-import wave
+from openai import OpenAI
+from dotenv import load_dotenv
 
-# Создаем папку temp
-os.makedirs("temp", exist_ok=True)
-
-# Открываем выходной файл
-with wave.open("temp/combined.wav", 'wb') as out:
-    # Берем параметры из первого файла
-    with wave.open("logs/chat_20250525_193549/chunk6.wav", 'rb') as first:
-        out.setparams(first.getparams())
+def transcribe_audio(wav_file_path):
+    # Загружаем API ключ из .env файла
+    load_dotenv()
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY не найден в .env файле")
     
-    # Копируем данные из каждого чанка
-    for i in range(6, 10):
-        with wave.open(f"logs/chat_20250525_193549/chunk{i}.wav", 'rb') as chunk:
-            out.writeframes(chunk.readframes(chunk.getnframes()))
+    # Создаем клиент OpenAI
+    client = OpenAI(api_key=api_key)
+    
+    try:
+        # Открываем и отправляем файл на распознавание
+        with open(wav_file_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="ru",
+                response_format="text"
+            )
+        return transcript
+    except Exception as e:
+        print(f"Ошибка при распознавании речи: {str(e)}")
+        return None
 
-print("Готово! Файл сохранен в temp/combined.wav")
+wav_file = "temp/combined.wav"
+    
+# Получаем расшифровку
+result = transcribe_audio(wav_file)
+    
+# Выводим результат
+if result:
+    print("Расшифровка аудио:")
+    print(result)
+else:
+    print("Не удалось распознать аудио")
 
-# command to run: python audio_to_text.py
+# command to run: python src/audio_to_text.py
+
