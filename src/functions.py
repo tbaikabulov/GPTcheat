@@ -9,7 +9,7 @@ organization = os.getenv("OPENAI_ORGANIZATION")
 
 api_key = os.getenv("OPENAI_API_KEY")
 
-def unite_chunks(chat_id, start_chunk_id, end_chunk_id, output_file_name):
+def unite_chunks(chat_id, start_chunk_id, end_chunk_id, output_file_name, to_print = False):
     # Создаем папку temp
     os.makedirs("temp", exist_ok=True)
     
@@ -42,8 +42,8 @@ def unite_chunks(chat_id, start_chunk_id, end_chunk_id, output_file_name):
             chunk_path = os.path.join(chat_dir, f"chunk{chunk_id}.wav")
             with wave.open(chunk_path, 'rb') as chunk:
                 out.writeframes(chunk.readframes(chunk.getnframes()))
-
-    print(f"Готово! Файл сохранен в {output_file_name}")
+    if to_print:
+        print(f"Готово! Файл сохранен в {output_file_name}")
     return True
 
 
@@ -106,7 +106,7 @@ pandas, python, sql, статистика, проверка гипотез, ad h
 Текст расшифровки:
 [[TEXT]]
 
-Заново напиши текст, сформулировав что имелось ввиду.
+Заново напиши текст, сформулировав что имелось ввиду. Только текст ответа, без дополнительных комментариев.
 """
 
 answer_prompt =f"""
@@ -116,28 +116,7 @@ answer_prompt =f"""
     По контексту диалога пойми о чем идет речь, в чем сейчас основной вопрос, и отобрази напиши текст, который
     отобразится на экране
 
-    В нем вкратце должны быть основные тезисы ответа, возможно шпаргалка, которая будет полезна для ответа.
+    В нем в 2-3 абзацах должны быть основные тезисы ответа, возможно шпаргалка, которая будет полезна для ответа.
+    Выжимка самой ценной информации по делу. Без доп комментариев.
 
     """
-
-def process_chat(chat_id, wav_file = "temp/combined.wav", improve_text_prompt = improve_text_prompt, answer_prompt = answer_prompt, to_print = True):
-    N = count_chunks(chat_id)
-
-    unite_chunks(chat_id, max(N-5, 0), N, wav_file)
-    if to_print:
-        print(f"Файл объединен перед отправкой на распознавание")
-        
-    # Получаем расшифровку
-    raw_text = audio_to_text(wav_file, api_key)
-    if to_print:
-        print(f"Расшифровка получена")
-
-    text = text_to_good_text(raw_text, improve_text_prompt)
-    if to_print:
-        print(f"text: {text}")
-
-    answer = gt_to_answer(text, answer_prompt)
-    if to_print:
-        print(f"answer: {answer}")
-
-    return raw_text, text, answer

@@ -9,10 +9,16 @@ import time
 from audio_recorder import AudioRecorder
 from wave_visualizer import WaveVisualizer
 from file_manager import FileManager
-from functions import process_chat
+from functions import *
+
+# Конфигурация приложения
+CHUNK_INTERVAL = 5000  # Интервал сохранения чанков (5 секунд)
+PROCESS_INTERVAL = 10000  # Интервал обработки чата (10 секунд)
+MAX_CHUNKS = 15 # Максимальное количество чанков для обработки
 
 class ChatProcessor(QThread):
     finished = Signal(dict)  # Сигнал для передачи результата обработки
+    text_ready = Signal(str)  # Новый сигнал для передачи распознанного текста
     
     def __init__(self, chat_id):
         super().__init__()
@@ -20,23 +26,41 @@ class ChatProcessor(QThread):
         
     def run(self):
         try:
-            # Обрабатываем чат
-            print(f"Обрабатываем чат {self.chat_id}")
-            raw_text, text, answer = process_chat(self.chat_id)
-            if text:
-                result = {
-                    'text': text,
-                    'answer': answer
-                }
-            else:
-                result = {
-                    'text': "Не удалось распознать текст",
-                    'answer': "Нет данных для генерации ответа"
-                }
+            # 1. Объединяем чанки
+            N = count_chunks(self.chat_id)
+            print(f"Обрабатываем чат {self.chat_id}, кол-во чанков: {N}")
+            if not unite_chunks(self.chat_id, max(N-MAX_CHUNKS, 0), N, "temp/combined.wav"):
+                self.text_ready.emit("Ожидание накопления чанков...")
+                return
+                
+            # 2. Получаем расшифровку
+            raw_text = audio_to_text("temp/combined.wav", api_key)
+            if not raw_text:
+                self.text_ready.emit("Не удалось распознать аудио")
+                return
+                
+            # 3. Улучшаем текст
+            text = text_to_good_text(raw_text, improve_text_prompt)
+            if not text:
+                self.text_ready.emit("Не удалось обработать текст")
+                return
+                
+            # Отправляем текст сразу после его обработки
+            self.text_ready.emit(text)
             
+            # 4. Генерируем ответ
+            answer = gt_to_answer(text, answer_prompt)
+            
+            # Отправляем результат с текстом и ответом
+            result = {
+                'text': text,
+                'answer': answer if answer else "Не удалось сгенерировать ответ"
+            }
             self.finished.emit(result)
+                
         except Exception as e:
             print(f"Ошибка в ChatProcessor: {str(e)}")
+            self.text_ready.emit(f"Ошибка обработки: {str(e)}")
             self.finished.emit({
                 'text': f"Ошибка обработки: {str(e)}",
                 'answer': "Не удалось сгенерировать ответ"
@@ -62,11 +86,11 @@ class MainWindow(QMainWindow):
         
         self.chunk_timer = QTimer(self)
         self.chunk_timer.timeout.connect(self.save_chunk)
-        self.chunk_timer.start(10000)  # каждые 10 секунд
+        self.chunk_timer.start(CHUNK_INTERVAL)  # Сохраняем чанки каждые CHUNK_INTERVAL мс
         
         self.process_timer = QTimer(self)
         self.process_timer.timeout.connect(self.process_chat)
-        self.process_timer.start(10000)  # каждые 10 секунд
+        self.process_timer.start(PROCESS_INTERVAL)  # Обрабатываем чат каждые PROCESS_INTERVAL мс
         
     def init_ui(self):
         central_widget = QWidget()
@@ -209,41 +233,69 @@ class MainWindow(QMainWindow):
             
             # Создаем и запускаем процессор в отдельном потоке
             self.chat_processor = ChatProcessor(chat_id)
+            self.chat_processor.text_ready.connect(self.on_text_ready)  # Подключаем новый сигнал
             self.chat_processor.finished.connect(self.on_chat_processed)
             self.chat_processor.start()
+            
+    def on_text_ready(self, text):
+        """Обработчик получения распознанного текста"""
+        try:
+            self.text_edit.setText(text)
+            self.text_edit.verticalScrollBar().setValue(0)
+        except Exception as e:
+            print(f"Ошибка при обновлении текста: {str(e)}")
             
     def on_chat_processed(self, result):
         """Обработчик завершения обработки чата"""
         try:
-            # Обновляем текстовые поля
-            if result.get('text'):
-                self.text_edit.setText(result['text'])
+            # Обновляем только поле с ответом
             if result.get('answer'):
                 self.hints_edit.setText(result['answer'])
-            
-            # Прокручиваем к началу
-            self.text_edit.verticalScrollBar().setValue(0)
-            self.hints_edit.verticalScrollBar().setValue(0)
+                self.hints_edit.verticalScrollBar().setValue(0)
         except Exception as e:
-            print(f"Ошибка при обновлении текста: {str(e)}")
+            print(f"Ошибка при обновлении ответа: {str(e)}")
     
     def closeEvent(self, event):
         self.stop_recording()
         event.accept()
 
+# Основной код приложения
 if __name__ == '__main__':
-    # подробный комментарий по коду:
-    # 1. мы создаем окно приложения
-    # 2. мы создаем экземпляр класса AudioRecorder для записи аудио
-    # 3. мы создаем экземпляр класса FileManager для управления файлами
-    # 4. мы создаем экземпляр класса ChatProcessor для обработки чата
-    # 5. мы создаем экземпляр класса MainWindow для отображения окна
-    # 6. мы создаем экземпляр класса QApplication для запуска приложения
+    # 1. Создаем экземпляр QApplication - это обязательный первый шаг для любого Qt приложения
+    # sys.argv содержит аргументы командной строки, которые передаются в приложение
     app = QApplication(sys.argv)
 
+    # 2. Создаем главное окно приложения
+    # MainWindow содержит всю логику интерфейса и обработки аудио
     window = MainWindow()
+    
+    # 3. Показываем окно на экране
     window.show()
+    
+    # 4. Запускаем главный цикл обработки событий приложения
+    # app.exec() будет работать, пока приложение не будет закрыто
+    # sys.exit() обеспечивает корректное завершение программы
     sys.exit(app.exec()) 
 
+# Основные компоненты приложения:
+# 1. MainWindow - главное окно приложения
+#    - Содержит все элементы интерфейса
+#    - Управляет записью аудио
+#    - Обрабатывает чаты
+#
+# 2. AudioRecorder - класс для записи аудио
+#    - Записывает аудио с микрофона
+#    - Сохраняет чанки аудио
+#
+# 3. ChatProcessor - класс для обработки чатов
+#    - Работает в отдельном потоке
+#    - Обрабатывает аудио и генерирует ответы
+#
+# 4. FileManager - класс для управления файлами
+#    - Создает директории для чатов
+#    - Сохраняет аудио чанки
+#
+# 5. WaveVisualizer - класс для визуализации аудио
+#    - Показывает уровень звука в реальном времени
 
 # command to run: python src/main.py
