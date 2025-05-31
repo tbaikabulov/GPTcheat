@@ -1,9 +1,10 @@
 import sys
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                              QPushButton, QLabel, QHBoxLayout, QTextEdit, QSplitter)
-from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from PySide6.QtGui import QShortcut, QKeySequence, QTextOption, QGuiApplication
 import os
+from pathlib import Path
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                              QPushButton, QLabel, QHBoxLayout, QTextEdit, QSplitter)
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal as Signal
+from PyQt6.QtGui import QShortcut, QKeySequence, QTextOption, QGuiApplication, QIcon
 import time
 from datetime import datetime
 import markdown2
@@ -18,6 +19,16 @@ from functions import *
 CHUNK_INTERVAL = 10000  # Интервал сохранения чанков (10000=10 секунд)
 PROCESS_INTERVAL = 10000  # Интервал обработки чата (10 секунд)
 MAX_CHUNKS = 7 # Максимальное количество чанков для обработки
+MARKDOWN_FONT_SIZE = 13  # Размер шрифта для markdown-текста
+
+def resource_path(relative_path):
+    """Возвращает абсолютный путь к ресурсу внутри .app или рядом с .py"""
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller
+        base_path = Path(sys._MEIPASS)
+    else:
+        base_path = Path(__file__).parent
+    return str(base_path / relative_path)
 
 class ChatProcessor(QThread):
     finished = Signal(dict)  # Сигнал для передачи результата обработки
@@ -96,8 +107,19 @@ class ChatProcessor(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Заметки на микрофон")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setWindowTitle("Interview Assistant")
+        self.setMinimumSize(800, 600)
+        
+        # Загружаем иконку
+        icon_path = Path(resource_path("resources/icons/app_icon.svg"))
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+        
+        # Загружаем стили
+        style_path = Path(resource_path("resources/styles/main.qss"))
+        if style_path.exists():
+            with open(style_path, "r") as f:
+                self.setStyleSheet(f.read())
         
         self.audio_recorder = AudioRecorder()
         self.file_manager = FileManager()
@@ -134,6 +156,8 @@ class MainWindow(QMainWindow):
         # Статус и кнопка в одну строку
         status_layout = QHBoxLayout()
         self.status_label = QLabel("Статус: Ожидание")
+        self.status_label.setObjectName("status_label")
+        self.status_label.setProperty("status", "ready")
         self.status_label.setStyleSheet("QLabel { color: gray; }")
         status_layout.addWidget(self.status_label)
         
@@ -145,12 +169,13 @@ class MainWindow(QMainWindow):
         # Визуализация волн
         self.wave_visualizer = WaveVisualizer()
         self.wave_visualizer.setFixedHeight(80)  # Уменьшаем высоту визуализации
+        self.wave_visualizer.setObjectName("wave_visualizer")
         top_layout.addWidget(self.wave_visualizer)
         
         main_layout.addWidget(top_widget)
         
         # Разделитель для текста и подсказок (80% высоты)
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Блок с распознанным текстом
         text_widget = QWidget()
@@ -162,28 +187,6 @@ class MainWindow(QMainWindow):
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         self.text_edit.setPlaceholderText("Здесь будет отображаться распознанный текст...")
-        # Настраиваем отображение Markdown
-        self.text_edit.document().setMarkdown("")
-        # Добавляем стили для Markdown
-        self.text_edit.setStyleSheet("""
-            QTextEdit {
-                background-color: white;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 8px;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                font-size: 14px;
-                line-height: 1.5;
-            }
-            code, pre {
-                background-color: #23241f;
-                color: #f8f8f2;
-                border-radius: 4px;
-                font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
-                font-size: 13px;
-                padding: 4px 8px;
-            }
-        """)
         text_layout.addWidget(self.text_edit)
         
         # Блок с подсказками
@@ -196,28 +199,6 @@ class MainWindow(QMainWindow):
         self.hints_edit = QTextEdit()
         self.hints_edit.setReadOnly(True)
         self.hints_edit.setPlaceholderText("Здесь будут отображаться подсказки...")
-        # Настраиваем отображение Markdown
-        self.hints_edit.document().setMarkdown("")
-        # Добавляем те же стили для Markdown
-        self.hints_edit.setStyleSheet("""
-            QTextEdit {
-                background-color: white;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 8px;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                font-size: 14px;
-                line-height: 1.5;
-            }
-            code, pre {
-                background-color: #23241f;
-                color: #f8f8f2;
-                border-radius: 4px;
-                font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
-                font-size: 13px;
-                padding: 4px 8px;
-            }
-        """)
         hints_layout.addWidget(self.hints_edit)
         
         # Добавляем виджеты в разделитель
@@ -230,27 +211,8 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(splitter)
         
         for edit in [self.text_edit, self.hints_edit]:
-            edit.setWordWrapMode(QTextOption.WrapAnywhere)
-            edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            edit.setStyleSheet("""
-                QTextEdit {
-                    background-color: white;
-                    border: 1px solid #ccc;
-                    border-radius: 4px;
-                    padding: 8px;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                    font-size: 14px;
-                    line-height: 1.5;
-                }
-                code, pre {
-                    background-color: #23241f;
-                    color: #f8f8f2;
-                    border-radius: 4px;
-                    font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
-                    font-size: 13px;
-                    padding: 4px 8px;
-                }
-            """)
+            edit.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
+            edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         copy_text_on_click(self.hints_edit)
         
@@ -277,12 +239,16 @@ class MainWindow(QMainWindow):
             
             self.record_btn.setText("⏹ Остановить запись (Space)")
             self.status_label.setText("Запись...")
-            self.status_label.setStyleSheet("QLabel { color: red; }")
+            self.status_label.setProperty("status", "recording")
+            self.status_label.style().unpolish(self.status_label)
+            self.status_label.style().polish(self.status_label)
             self.wave_visualizer.clear()
             
         except Exception as e:
             self.status_label.setText(f"Ошибка: {str(e)}")
-            self.status_label.setStyleSheet("QLabel { color: red; }")
+            self.status_label.setProperty("status", "error")
+            self.status_label.style().unpolish(self.status_label)
+            self.status_label.style().polish(self.status_label)
             print(f"Ошибка при запуске записи: {str(e)}")
     
     def stop_recording(self):
@@ -301,7 +267,9 @@ class MainWindow(QMainWindow):
             
             self.record_btn.setText("🎤 Начать запись (Space)")
             self.status_label.setText("Готов к записи")
-            self.status_label.setStyleSheet("QLabel { color: gray; }")
+            self.status_label.setProperty("status", "ready")
+            self.status_label.style().unpolish(self.status_label)
+            self.status_label.style().polish(self.status_label)
             self.wave_visualizer.clear()
             
     def update_visualization(self):
@@ -336,8 +304,7 @@ class MainWindow(QMainWindow):
     def on_text_ready(self, text):
         """Обработчик получения распознанного текста"""
         try:
-            # Устанавливаем текст с поддержкой Markdown
-            set_markdown_with_code_wrap(self.text_edit, text)
+            set_markdown_with_code_wrap(self.text_edit, text, font_size=MARKDOWN_FONT_SIZE)
             self.text_edit.verticalScrollBar().setValue(0)
         except Exception as e:
             print(f"Ошибка при обновлении текста: {str(e)}")
@@ -345,9 +312,8 @@ class MainWindow(QMainWindow):
     def on_chat_processed(self, result):
         """Обработчик завершения обработки чата"""
         try:
-            # Обновляем только поле с ответом, с поддержкой Markdown
             if result.get('answer'):
-                set_markdown_with_code_wrap(self.hints_edit, result['answer'])
+                set_markdown_with_code_wrap(self.hints_edit, result['answer'], font_size=MARKDOWN_FONT_SIZE)
                 self.hints_edit.verticalScrollBar().setValue(0)
         except Exception as e:
             print(f"Ошибка при обновлении ответа: {str(e)}")
@@ -361,23 +327,26 @@ def copy_text_on_click(edit):
         QGuiApplication.clipboard().setText(edit.toPlainText())
     edit.mousePressEvent = handler
 
-def set_markdown_with_code_wrap(edit, text):
+def set_markdown_with_code_wrap(edit, text, font_size=MARKDOWN_FONT_SIZE):
     # Преобразуем markdown в html
     html = markdown2.markdown(text, extras=["fenced-code-blocks"])
-    # Добавим стили для кода
-    style = """
+    # Добавим стили для кода и текста с параметром font_size
+    style = f"""
     <style>
-    pre, code {
+    body, p, ul, ol, li, h1, h2, h3, h4, h5, h6 {{
+        font-size: {font_size}px;
+    }}
+    pre, code {{
         background: #e6ecf1;
         color: #222;
         border-radius: 6px;
         font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
-        font-size: 13px;
+        font-size: {font_size}px;
         padding: 8px;
         word-break: break-all;
         white-space: pre-wrap;
         display: block;
-    }
+    }}
     </style>
     """
     edit.setHtml(style + html)
@@ -398,7 +367,7 @@ class CodeWidget(QWidget):
         layout.addWidget(self.editor)
 
     def copy_code(self):
-        from PySide6.QtGui import QGuiApplication
+        from PyQt6.QtGui import QGuiApplication
         QGuiApplication.clipboard().setText(self.editor.text())
 
 # Основной код приложения
