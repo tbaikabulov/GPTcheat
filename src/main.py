@@ -2,9 +2,12 @@ import sys
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QPushButton, QLabel, QHBoxLayout, QTextEdit, QSplitter)
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from PySide6.QtGui import QShortcut, QKeySequence
-import threading
+from PySide6.QtGui import QShortcut, QKeySequence, QTextOption, QGuiApplication
+import os
 import time
+from datetime import datetime
+import markdown2
+from PyQt6.Qsci import QsciScintilla, QsciLexerPython
 
 from audio_recorder import AudioRecorder
 from wave_visualizer import WaveVisualizer
@@ -12,9 +15,9 @@ from file_manager import FileManager
 from functions import *
 
 # Конфигурация приложения
-CHUNK_INTERVAL = 5000  # Интервал сохранения чанков (5 секунд)
+CHUNK_INTERVAL = 10000  # Интервал сохранения чанков (10000=10 секунд)
 PROCESS_INTERVAL = 10000  # Интервал обработки чата (10 секунд)
-MAX_CHUNKS = 15 # Максимальное количество чанков для обработки
+MAX_CHUNKS = 7 # Максимальное количество чанков для обработки
 
 class ChatProcessor(QThread):
     finished = Signal(dict)  # Сигнал для передачи результата обработки
@@ -23,12 +26,21 @@ class ChatProcessor(QThread):
     def __init__(self, chat_id):
         super().__init__()
         self.chat_id = chat_id
+        self.start_time = time.time()
+        self.file_manager = FileManager()
+        self.MIN_WORDS = 10  # Минимальное количество слов для обработки
+        
+    def log_event(self, event_type, details):
+        """Логирует событие в файл"""
+        self.file_manager.current_chat = f"chat_{self.chat_id}"
+        self.file_manager.log_event(event_type, details)
         
     def run(self):
         try:
             # 1. Объединяем чанки
             N = count_chunks(self.chat_id)
-            print(f"Обрабатываем чат {self.chat_id}, кол-во чанков: {N}")
+            self.log_event("Начало обработки", f"чанков: {N}")
+            
             if not unite_chunks(self.chat_id, max(N-MAX_CHUNKS, 0), N, "temp/combined.wav"):
                 self.text_ready.emit("Ожидание накопления чанков...")
                 return
@@ -39,17 +51,30 @@ class ChatProcessor(QThread):
                 self.text_ready.emit("Не удалось распознать аудио")
                 return
                 
+            self.log_event("Текст получен", f"Исходный текст: {raw_text}")
+            
+            # Проверяем количество слов
+            word_count = len(raw_text.split())
+            if word_count < self.MIN_WORDS:
+                self.text_ready.emit("Слушаем аудио...")
+                self.log_event("Текст слишком короткий", f"Слов: {word_count}, минимум: {self.MIN_WORDS}")
+                return
+                
             # 3. Улучшаем текст
             text = text_to_good_text(raw_text, improve_text_prompt)
             if not text:
                 self.text_ready.emit("Не удалось обработать текст")
                 return
                 
+            self.log_event("Текст улучшен", f"Улучшенный текст: {text}")
+                
             # Отправляем текст сразу после его обработки
             self.text_ready.emit(text)
             
             # 4. Генерируем ответ
             answer = gt_to_answer(text, answer_prompt)
+            
+            self.log_event("Ответ сгенерирован", f"Ответ: {answer}")
             
             # Отправляем результат с текстом и ответом
             result = {
@@ -59,17 +84,19 @@ class ChatProcessor(QThread):
             self.finished.emit(result)
                 
         except Exception as e:
-            print(f"Ошибка в ChatProcessor: {str(e)}")
-            self.text_ready.emit(f"Ошибка обработки: {str(e)}")
+            error_msg = f"Ошибка обработки: {str(e)}"
+            print(error_msg)
+            self.log_event("Ошибка", error_msg)
+            self.text_ready.emit(error_msg)
             self.finished.emit({
-                'text': f"Ошибка обработки: {str(e)}",
+                'text': error_msg,
                 'answer': "Не удалось сгенерировать ответ"
             })
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GPTcheat - Interview Assistant")
+        self.setWindowTitle("Заметки на микрофон")
         self.setGeometry(100, 100, 1200, 800)
         
         self.audio_recorder = AudioRecorder()
@@ -135,6 +162,28 @@ class MainWindow(QMainWindow):
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         self.text_edit.setPlaceholderText("Здесь будет отображаться распознанный текст...")
+        # Настраиваем отображение Markdown
+        self.text_edit.document().setMarkdown("")
+        # Добавляем стили для Markdown
+        self.text_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            code, pre {
+                background-color: #23241f;
+                color: #f8f8f2;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
+                font-size: 13px;
+                padding: 4px 8px;
+            }
+        """)
         text_layout.addWidget(self.text_edit)
         
         # Блок с подсказками
@@ -147,6 +196,28 @@ class MainWindow(QMainWindow):
         self.hints_edit = QTextEdit()
         self.hints_edit.setReadOnly(True)
         self.hints_edit.setPlaceholderText("Здесь будут отображаться подсказки...")
+        # Настраиваем отображение Markdown
+        self.hints_edit.document().setMarkdown("")
+        # Добавляем те же стили для Markdown
+        self.hints_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                font-size: 14px;
+                line-height: 1.5;
+            }
+            code, pre {
+                background-color: #23241f;
+                color: #f8f8f2;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
+                font-size: 13px;
+                padding: 4px 8px;
+            }
+        """)
         hints_layout.addWidget(self.hints_edit)
         
         # Добавляем виджеты в разделитель
@@ -157,6 +228,31 @@ class MainWindow(QMainWindow):
         splitter.setSizes([600, 600])
         
         main_layout.addWidget(splitter)
+        
+        for edit in [self.text_edit, self.hints_edit]:
+            edit.setWordWrapMode(QTextOption.WrapAnywhere)
+            edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            edit.setStyleSheet("""
+                QTextEdit {
+                    background-color: white;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    padding: 8px;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    font-size: 14px;
+                    line-height: 1.5;
+                }
+                code, pre {
+                    background-color: #23241f;
+                    color: #f8f8f2;
+                    border-radius: 4px;
+                    font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
+                    font-size: 13px;
+                    padding: 4px 8px;
+                }
+            """)
+        
+        copy_text_on_click(self.hints_edit)
         
     def setup_hotkeys(self):
         self.record_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
@@ -240,7 +336,8 @@ class MainWindow(QMainWindow):
     def on_text_ready(self, text):
         """Обработчик получения распознанного текста"""
         try:
-            self.text_edit.setText(text)
+            # Устанавливаем текст с поддержкой Markdown
+            set_markdown_with_code_wrap(self.text_edit, text)
             self.text_edit.verticalScrollBar().setValue(0)
         except Exception as e:
             print(f"Ошибка при обновлении текста: {str(e)}")
@@ -248,9 +345,9 @@ class MainWindow(QMainWindow):
     def on_chat_processed(self, result):
         """Обработчик завершения обработки чата"""
         try:
-            # Обновляем только поле с ответом
+            # Обновляем только поле с ответом, с поддержкой Markdown
             if result.get('answer'):
-                self.hints_edit.setText(result['answer'])
+                set_markdown_with_code_wrap(self.hints_edit, result['answer'])
                 self.hints_edit.verticalScrollBar().setValue(0)
         except Exception as e:
             print(f"Ошибка при обновлении ответа: {str(e)}")
@@ -258,6 +355,51 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.stop_recording()
         event.accept()
+
+def copy_text_on_click(edit):
+    def handler(event):
+        QGuiApplication.clipboard().setText(edit.toPlainText())
+    edit.mousePressEvent = handler
+
+def set_markdown_with_code_wrap(edit, text):
+    # Преобразуем markdown в html
+    html = markdown2.markdown(text, extras=["fenced-code-blocks"])
+    # Добавим стили для кода
+    style = """
+    <style>
+    pre, code {
+        background: #e6ecf1;
+        color: #222;
+        border-radius: 6px;
+        font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
+        font-size: 13px;
+        padding: 8px;
+        word-break: break-all;
+        white-space: pre-wrap;
+        display: block;
+    }
+    </style>
+    """
+    edit.setHtml(style + html)
+
+class CodeWidget(QWidget):
+    def __init__(self, code_text, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        self.editor = QsciScintilla()
+        self.editor.setText(code_text)
+        self.editor.setReadOnly(True)
+        self.editor.setWrapMode(QsciScintilla.WrapWord)
+        # Подсветка Python
+        lexer = QsciLexerPython()
+        self.editor.setLexer(lexer)
+        # Копирование по клику
+        self.editor.mousePressEvent = lambda event: self.copy_code()
+        layout.addWidget(self.editor)
+
+    def copy_code(self):
+        from PySide6.QtGui import QGuiApplication
+        QGuiApplication.clipboard().setText(self.editor.text())
 
 # Основной код приложения
 if __name__ == '__main__':

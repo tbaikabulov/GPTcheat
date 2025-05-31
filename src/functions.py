@@ -9,47 +9,34 @@ organization = os.getenv("OPENAI_ORGANIZATION")
 
 api_key = os.getenv("OPENAI_API_KEY")
 
-def unite_chunks(chat_id, start_chunk_id, end_chunk_id, output_file_name, to_print = False):
-    # Создаем папку temp
-    os.makedirs("temp", exist_ok=True)
-    
-    # Формируем путь к директории чата
-    chat_dir = f"logs/chat_{chat_id}"
-    
-    # Создаем директорию чата, если она не существует
-    os.makedirs(chat_dir, exist_ok=True)
-    
-    # Находим все существующие чанки
-    existing_chunks = []
-    for i in range(start_chunk_id, end_chunk_id + 1):
-        chunk_path = os.path.join(chat_dir, f"chunk{i}.wav")
-        if os.path.exists(chunk_path):
-            existing_chunks.append(i)
-    
-    if not existing_chunks:
-        print(f"Ошибка: Не найдено ни одного чанка в диапазоне {start_chunk_id}-{end_chunk_id}")
+def unite_chunks(chat_id, start_chunk, end_chunk, output_file):
+    """Объединяет чанки аудио в один файл"""
+    try:
+        # Получаем список чанков
+        chat_dir = f"logs/audio/chat_{chat_id}"
+        chunks = sorted([f for f in os.listdir(chat_dir) if f.startswith('chunk_') and f.endswith('.wav')])
+        
+        if not chunks:
+            return False
+            
+        # Объединяем чанки
+        with wave.open(output_file, 'wb') as output:
+            for i, chunk in enumerate(chunks[start_chunk:end_chunk]):
+                with wave.open(os.path.join(chat_dir, chunk), 'rb') as w:
+                    if i == 0:
+                        output.setparams(w.getparams())
+                    output.writeframes(w.readframes(w.getnframes()))
+        return True
+    except Exception as e:
+        print(f"Ошибка при объединении чанков: {str(e)}")
         return False
 
-    # Открываем выходной файл
-    with wave.open(output_file_name, 'wb') as out:
-        # Берем параметры из первого существующего файла
-        first_chunk_path = os.path.join(chat_dir, f"chunk{existing_chunks[0]}.wav")
-        with wave.open(first_chunk_path, 'rb') as first:
-            out.setparams(first.getparams())
-        
-        # Копируем данные из каждого существующего чанка
-        for chunk_id in existing_chunks:
-            chunk_path = os.path.join(chat_dir, f"chunk{chunk_id}.wav")
-            with wave.open(chunk_path, 'rb') as chunk:
-                out.writeframes(chunk.readframes(chunk.getnframes()))
-    if to_print:
-        print(f"Готово! Файл сохранен в {output_file_name}")
-    return True
-
-
-# считаем общее кол-во чанков:
 def count_chunks(chat_id):
-    return len(os.listdir(f"logs/chat_{chat_id}"))
+    """Возвращает количество чанков в чате"""
+    try:
+        return len(os.listdir(f"logs/audio/chat_{chat_id}"))
+    except:
+        return 0
 
 def chat_question_gpt(question, temperature = 0, prep="", conversation_id=None):
     client = OpenAI(organization=organization)
@@ -90,8 +77,8 @@ def text_to_good_text(text, prompt):
     return answer
 
 
-def gt_to_answer(text, prompt):
-    question = prompt.replace("[[TEXT]]", text)
+def gt_to_answer(text, answer_prompt):
+    question = answer_prompt.replace("[[TEXT]]", text)
     answer = chat_question_gpt(question)
     
     return answer
@@ -110,13 +97,19 @@ pandas, python, sql, статистика, проверка гипотез, ad h
 """
 
 answer_prompt =f"""
-    Ты умный помощник на собеседовании на аналитика данных. Прямо сейчас идет собеседование, текст расшифровки аудио:
-    [[TEXT]]
+   Ты умный помощник на собеседовании на аналитика данных. Прямо сейчас идёт собеседование, ниже расшифровка текста разговора:
 
-    По контексту диалога пойми о чем идет речь, в чем сейчас основной вопрос, и отобрази напиши текст, который
-    отобразится на экране
+[[TEXT]]
 
-    В нем в 2-3 абзацах должны быть основные тезисы ответа, возможно шпаргалка, которая будет полезна для ответа.
-    Выжимка самой ценной информации по делу. Без доп комментариев.
+На основе этого текста выведи на экран краткую, полезную выжимку для кандидата — как шпаргалку. Никаких вступлений, пояснений, воды.
+
+В ответе:
+1. Чётко сформулируй, в чём сейчас основной вопрос интервьюера (1 предложение).
+2. Дай 2–3 пункта краткого пошагового решения, с минимально необходимыми пояснениями и примерами кода на Python.
+3. В конце — 1 дополнительный совет, как ответить на уточняющие вопросы или углубить тему.
+
+Только факты. Только по делу.
+
+
 
     """
