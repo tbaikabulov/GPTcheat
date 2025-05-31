@@ -8,7 +8,6 @@ from PyQt6.QtGui import QShortcut, QKeySequence, QTextOption, QGuiApplication, Q
 import time
 from datetime import datetime
 import markdown2
-from PyQt6.Qsci import QsciScintilla, QsciLexerPython
 
 from audio_recorder import AudioRecorder
 from wave_visualizer import WaveVisualizer
@@ -350,25 +349,6 @@ def set_markdown_with_code_wrap(edit, text, font_size=MARKDOWN_FONT_SIZE):
     </style>
     """
     edit.setHtml(style + html)
-
-class CodeWidget(QWidget):
-    def __init__(self, code_text, parent=None):
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        self.editor = QsciScintilla()
-        self.editor.setText(code_text)
-        self.editor.setReadOnly(True)
-        self.editor.setWrapMode(QsciScintilla.WrapWord)
-        # Подсветка Python
-        lexer = QsciLexerPython()
-        self.editor.setLexer(lexer)
-        # Копирование по клику
-        self.editor.mousePressEvent = lambda event: self.copy_code()
-        layout.addWidget(self.editor)
-
-    def copy_code(self):
-        from PyQt6.QtGui import QGuiApplication
-        QGuiApplication.clipboard().setText(self.editor.text())
 
 # Основной код приложения
 if __name__ == '__main__':
