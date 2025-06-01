@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interview Assistant")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(int(800*1.1), int(600*1.1))
         
         # Загружаем иконку
         icon_path = Path(resource_path("resources/icons/app_icon.svg"))
@@ -205,7 +205,9 @@ class MainWindow(QMainWindow):
         splitter.addWidget(hints_widget)
         
         # Устанавливаем начальные размеры
-        splitter.setSizes([600, 600])
+        splitter.setStretchFactor(0, 3)  # Левый (text_widget) — 3
+        splitter.setStretchFactor(1, 7)  # Правый (hints_widget) — 7
+        #splitter.setSizes([3, 7])        # И дополнительно setSizes
         
         main_layout.addWidget(splitter)
         
@@ -332,19 +334,44 @@ def set_markdown_with_code_wrap(edit, text, font_size=MARKDOWN_FONT_SIZE):
     # Добавим стили для кода и текста с параметром font_size
     style = f"""
     <style>
+    /* Базовые стили для всего текста */
     body, p, ul, ol, li, h1, h2, h3, h4, h5, h6 {{
-        font-size: {font_size}px;
+        font-size: {font_size}px;  /* Размер шрифта для всего текста */
+        margin: 0;                 /* Убираем внешние отступы */
+        padding: 0;                /* Убираем внутренние отступы */
     }}
+
+    /* Стили для списков (маркированных и нумерованных) */
+    ul, ol {{
+        margin-left: 0;            /* Убираем внешний отступ слева */
+        padding-left: 0;           /* Убираем внутренний отступ слева */
+        list-style-position: inside; /* Маркеры внутри блока, а не снаружи */
+        margin-top: 0;
+        margin-bottom: 0.1em;
+    }}
+
+    /* Стили для элементов списка */
+    li {{
+        margin-bottom: 0.1em;      /* Отступ между элементами списка */
+    }}
+
+    /* Стили для параграфов */
+    p {{
+        margin-bottom: 0.2em;      /* Отступ между параграфами */
+    }}
+
+    /* Стили для блоков кода и инлайн-кода */
     pre, code {{
-        background: #e6ecf1;
-        color: #222;
-        border-radius: 6px;
-        font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;
-        font-size: {font_size}px;
-        padding: 8px;
-        word-break: break-all;
-        white-space: pre-wrap;
-        display: block;
+        background: #e6ecf1;       /* Светло-серый фон для кода */
+        color: #222;               /* Цвет текста кода */
+        border-radius: 6px;        /* Скругление углов блока кода */
+        font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', 'Menlo', monospace;  /* Моноширинные шрифты для кода */
+        font-size: {font_size}px;  /* Размер шрифта кода */
+        padding: 8px;              /* Внутренний отступ блока кода */
+        word-break: break-all;     /* Разрешаем перенос слов в любом месте */
+        white-space: pre-wrap;     /* Сохраняем пробелы и переносы, но разрешаем перенос строк */
+        display: block;            /* Блочное отображение */
+        margin: 0.2em 0;           /* Отступы сверху и снизу блока кода */
     }}
     </style>
     """
