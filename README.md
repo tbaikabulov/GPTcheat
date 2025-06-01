@@ -1,6 +1,7 @@
+python src/main.py      
 
+git checkout -b feature/qt6-fix-platform-plugin
+git add .
+git commit -m "Fix: Qt6 cocoa platform plugin issue, подготовка к корректному запуску на macOS"
 
-Смотри вот я написал функцию process_chat
-Теперь я хочу чтобы она применялась каждые 20 сек во время записи диктофона
-Но при этом я хочу как бы сделать параллельными эти процессы, асинхронными?
-Чтобы не было такого что запись диктофона или продвижение дорожки приостанавливается, пока какое-то действие не выполнится
+ git push origin feature/qt6-fix-platform-plugin

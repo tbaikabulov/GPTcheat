@@ -4,3 +4,7 @@ venv/
 .env
 temp/
 logs/ 
+dist/
+build/
+*.dmg
+*.app
