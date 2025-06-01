@@ -2,12 +2,18 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import wave
+from anthropic import Anthropic
+import requests
 
 load_dotenv()
 
-organization = os.getenv("OPENAI_ORGANIZATION")
+OPENAI_ORGANIZATION = os.getenv("OPENAI_ORGANIZATION")
 
-api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL")
+GROK_API_KEY = os.getenv("GROK_API_KEY")    
 
 def unite_chunks(chat_id, start_chunk, end_chunk, output_file):
     """Объединяет чанки аудио в один файл"""
@@ -38,8 +44,71 @@ def count_chunks(chat_id):
     except:
         return 0
 
+def chat_question_claude(question, temperature=0, prep="", conversation_id=None):
+    anthropic = Anthropic(api_key=CLAUDE_API_KEY)
+    
+    try:
+        messages = []
+        if prep:
+            messages.append({
+                "role": "system",
+                "content": prep
+            })
+        
+        messages.append({
+            "role": "user",
+            "content": question
+        })
+        
+        response = anthropic.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1000,
+            messages=messages,
+            temperature=temperature
+        )
+        
+        return response.content[0].text
+        
+    except Exception as e:
+        print(f"Error in Claude request: {str(e)}")
+        return "An error occurred while processing your request. Please try again."
+
+
+def chat_question_grok(question, temperature=0, prep="You are a test assistant."):
+    url = "https://api.x.ai/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {GROK_API_KEY}"
+    }
+    
+    data = {
+        "messages": [
+            {
+                "role": "system",
+                "content": prep
+            },
+            {
+                "role": "user",
+                "content": question
+            }
+        ],
+        "model": "grok-2-latest",
+        "stream": False,
+        "temperature": temperature
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        
+        return response.json()['choices'][0]['message']['content']
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error making request to Grok API: {str(e)}")
+        return "An error occurred while processing your request. Please try again."
+
 def chat_question_gpt(question, temperature = 0, prep="", conversation_id=None):
-    client = OpenAI(organization=organization)
+    client = OpenAI(organization=OPENAI_ORGANIZATION)
     messages = [{"role": "system", "content": prep}]
     messages.append({"role": "user", "content": question})
 
@@ -53,8 +122,8 @@ def chat_question_gpt(question, temperature = 0, prep="", conversation_id=None):
 
     return answer
 
-def audio_to_text(wav_file_path, api_key):
-    client = OpenAI(api_key=api_key)
+def audio_to_text(wav_file_path):
+    client = OpenAI(api_key=OPENAI_API_KEY)
     
     try:
         # Открываем и отправляем файл на распознавание

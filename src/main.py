@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QPushButton, QLabel, QHBoxLayout, QTextEdit, QSplitter)
-from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal as Signal
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal as Signal, QSize
 from PyQt6.QtGui import QShortcut, QKeySequence, QTextOption, QGuiApplication, QIcon
 import time
 from datetime import datetime
@@ -56,7 +56,7 @@ class ChatProcessor(QThread):
                 return
                 
             # 2. Получаем расшифровку
-            raw_text = audio_to_text("temp/combined.wav", api_key)
+            raw_text = audio_to_text("temp/combined.wav")
             if not raw_text:
                 self.text_ready.emit("Не удалось распознать аудио")
                 return
@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
         self.audio_recorder = AudioRecorder()
         self.file_manager = FileManager()
         self.chat_processor = None
+        self.is_fading = False  # Флаг затухания волны
         
         self.init_ui()
         self.setup_hotkeys()
@@ -160,7 +161,24 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet("QLabel { color: gray; }")
         status_layout.addWidget(self.status_label)
         
-        self.record_btn = QPushButton("Начать запись (Space)")
+        icon_path = Path(resource_path("resources/icons/record_red.svg"))
+        self.record_btn = QPushButton("🎤 Начать запись (Space)")
+        if icon_path.exists():
+            self.record_btn.setIcon(QIcon(str(icon_path)))
+            self.record_btn.setIconSize(QSize(20, 20))
+        self.record_btn.setStyleSheet("""
+QPushButton {
+    border-radius: 12px;
+    padding: 6px 18px 6px 12px;
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: white;
+    border: 1px solid #e0e0e0;
+}
+QPushButton:hover {
+    background: #f5f5f5;
+}
+""")
         self.record_btn.clicked.connect(self.toggle_recording)
         status_layout.addWidget(self.record_btn)
         top_layout.addLayout(status_layout)
@@ -271,12 +289,21 @@ class MainWindow(QMainWindow):
             self.status_label.setProperty("status", "ready")
             self.status_label.style().unpolish(self.status_label)
             self.status_label.style().polish(self.status_label)
-            self.wave_visualizer.clear()
+            # self.wave_visualizer.clear()
+            self.is_fading = True  # Запускаем затухание волны
             
     def update_visualization(self):
         if self.audio_recorder.is_recording:
             level = self.audio_recorder.get_audio_level()
             self.wave_visualizer.update_level(level)
+            self.is_fading = False  # Сброс затухания, если снова пишем
+        elif self.is_fading:
+            # Постепенно затухаем: добавляем уровень, стремящийся к 0
+            # Если все значения уже близки к 0 — останавливаем затухание
+            if hasattr(self.wave_visualizer, 'levels') and max(abs(l) for l in self.wave_visualizer.levels) < 0.01:
+                self.is_fading = False
+            else:
+                self.wave_visualizer.update_level(0)
             
     def save_chunk(self):
         if self.audio_recorder.is_recording:
